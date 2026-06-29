@@ -1,13 +1,13 @@
-class SongModel {
+class Song {
   final String title;
   final String artist;
-  final String url;
+  final String audioPath;
   final String albumArt;
 
-  SongModel({
+  const Song({
     required this.title,
     required this.artist,
-    required this.url,
+    required this.audioPath,
     required this.albumArt,
   });
 }

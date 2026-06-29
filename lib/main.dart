@@ -18,13 +18,17 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'My Sassy Voice',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(primarySwatch: Colors.deepPurple),
-      home: const MenuScreen(), // Start with Menu Page
+      home: const MenuScreen(),
     );
   }
 }
 
-// Menu Page: central navigation hub
+// ===============================
+// MENU SCREEN
+// ===============================
+
 class MenuScreen extends StatelessWidget {
   const MenuScreen({super.key});
 
@@ -40,7 +44,7 @@ class MenuScreen extends StatelessWidget {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(builder: (_) => const PlaylistScreen()),
+                MaterialPageRoute(builder: (_) => const PlaylistMenuScreen()),
               );
             },
           ),
@@ -54,48 +58,125 @@ class MenuScreen extends StatelessWidget {
               );
             },
           ),
-          // Add more menu items here (Settings, About, etc.)
         ],
       ),
     );
   }
 }
 
-// Playlist view
+// ===============================
+// PLAYLIST MENU SCREEN
+// ===============================
+
+class PlaylistMenuScreen extends StatelessWidget {
+  const PlaylistMenuScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final vm = Provider.of<PlaylistViewModel>(context, listen: false);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Choose Playlist')),
+      body: ListView(
+        children: [
+          ListTile(
+            leading: const Icon(Icons.favorite, color: Colors.deepPurple),
+            title: const Text('Prayer Playlist'),
+            subtitle: const Text('Prayer and worship songs'),
+            onTap: () {
+              vm.selectPlaylist('prayer');
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PlaylistScreen()),
+              );
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.piano, color: Colors.deepPurple),
+            title: const Text('Scott Joplin Playlist'),
+            subtitle: const Text('Scott Joplin Collection'),
+            onTap: () {
+              vm.selectPlaylist('scott');
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const PlaylistScreen()),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ===============================
+// PLAYLIST SCREEN
+// ===============================
+
 class PlaylistScreen extends StatelessWidget {
   const PlaylistScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<PlaylistViewModel>(context);
+    final playlist = vm.currentPlaylistSongs;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Sassy Voice Playlist')),
+      appBar: AppBar(title: Text(vm.currentPlaylistTitle)),
       body: ListView.builder(
-        itemCount: vm.playlist.length,
+        itemCount: playlist.length,
         itemBuilder: (context, index) {
-          final song = vm.playlist[index];
-          return ListTile(
-            leading: ClipRRect(
-              borderRadius: BorderRadius.circular(6),
-              child: Image.asset(song.albumArt,
-                  width: 60, height: 60, fit: BoxFit.cover),
-            ),
-            title: Text(song.title,
-                style: const TextStyle(fontWeight: FontWeight.bold)),
-            subtitle: Text(song.artist),
-            trailing: IconButton(
-              icon: Icon(
-                vm.currentIndex == index && vm.isPlaying
-                    ? Icons.pause_circle_filled
-                    : Icons.play_circle_fill,
-                color: Colors.deepPurple,
+          final song = playlist[index];
+
+          final bool isCurrentSong =
+              vm.currentSong?.audioPath == song.audioPath;
+
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: ListTile(
+              leading: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  song.albumArt,
+                  width: 60,
+                  height: 60,
+                  fit: BoxFit.cover,
+                ),
               ),
-              onPressed: () {
-                if (vm.currentIndex == index && vm.isPlaying) {
-                  vm.pauseSong();
-                } else {
-                  vm.playSong(index);
+              title: Text(
+                song.title,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              subtitle: Text(song.artist),
+              trailing: IconButton(
+                icon: Icon(
+                  isCurrentSong && vm.isPlaying
+                      ? Icons.pause_circle_filled
+                      : Icons.play_circle_fill,
+                  color: Colors.deepPurple,
+                  size: 34,
+                ),
+                onPressed: () async {
+                  if (isCurrentSong && vm.isPlaying) {
+                    await vm.pauseSong();
+                  } else {
+                    await vm.playSong(index);
+                  }
+
+                  if (context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PlayerScreen()),
+                    );
+                  }
+                },
+              ),
+              onTap: () async {
+                await vm.playSong(index);
+
+                if (context.mounted) {
                   Navigator.push(
                     context,
                     MaterialPageRoute(builder: (_) => const PlayerScreen()),
@@ -110,132 +191,180 @@ class PlaylistScreen extends StatelessWidget {
   }
 }
 
-// Player view
+// ===============================
+// PLAYER SCREEN
+// ===============================
+
 class PlayerScreen extends StatelessWidget {
   const PlayerScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final vm = Provider.of<PlaylistViewModel>(context);
+    final song = vm.currentSong;
 
-    if (vm.currentIndex == -1) {
+    if (song == null) {
       return Scaffold(
         appBar: AppBar(title: const Text('Now Playing')),
-        body: const Center(child: Text('No song selected')),
+        body: Center(
+          child: ElevatedButton.icon(
+            icon: const Icon(Icons.play_arrow),
+            label: const Text('Play All Songs'),
+            onPressed: () async {
+              await vm.playAllSongsFromStart();
+            },
+          ),
+        ),
       );
     }
 
-    final song = vm.playlist[vm.currentIndex];
+    final double maxSeconds =
+    vm.duration.inSeconds > 0 ? vm.duration.inSeconds.toDouble() : 1.0;
+
+    final double currentSeconds =
+    vm.position.inSeconds.toDouble().clamp(0.0, maxSeconds);
 
     return Scaffold(
       appBar: AppBar(title: const Text('Now Playing')),
-      body: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(song.albumArt,
-                width: 250, height: 250, fit: BoxFit.cover),
-          ),
-          const SizedBox(height: 20),
-          Text(song.title,
-              style: const TextStyle(fontSize: 26, fontWeight: FontWeight.bold)),
-          Text(song.artist,
-              style: const TextStyle(
-                  fontSize: 18, color: Colors.grey, fontStyle: FontStyle.italic)),
-          const SizedBox(height: 20),
-          Slider(
-            min: 0,
-            max: vm.duration.inSeconds.toDouble(),
-            value: vm.position.inSeconds
-                .toDouble()
-                .clamp(0, vm.duration.inSeconds.toDouble()),
-            activeColor: Colors.deepPurple,
-            inactiveColor: Colors.grey.shade400,
-            onChanged: (value) {
-              vm.seekTo(Duration(seconds: value.toInt()));
-            },
-          ),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
             children: [
-              Text(_formatDuration(vm.position)),
-              Text(_formatDuration(vm.duration)),
-            ],
-          ),
-          const SizedBox(height: 20),
-          // Playback controls row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                iconSize: 40,
-                icon: const Icon(Icons.skip_previous),
-                onPressed: () {
-                  if (vm.currentIndex > 0) {
-                    vm.playSong(vm.currentIndex - 1);
-                  }
-                },
-              ),
-              IconButton(
-                iconSize: 60,
-                icon: Icon(vm.isPlaying ? Icons.pause_circle : Icons.play_circle),
-                color: Colors.deepPurple,
-                onPressed: () {
-                  vm.isPlaying ? vm.pauseSong() : vm.resumeSong();
-                },
-              ),
-              IconButton(
-                iconSize: 40,
-                icon: const Icon(Icons.skip_next),
-                onPressed: () {
-                  if (vm.currentIndex < vm.playlist.length - 1) {
-                    vm.playSong(vm.currentIndex + 1);
-                  }
-                },
-              ),
-            ],
-          ),
+              const SizedBox(height: 30),
 
-          const SizedBox(height: 20),
-
-// Extra controls row: Shuffle, Repeat, Stop
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Shuffle toggle
-              IconButton(
-                icon: Icon(
-                  vm.shuffle ? Icons.shuffle_on : Icons.shuffle,
-                  color: vm.shuffle ? Colors.deepPurple : Colors.grey,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Image.asset(
+                  song.albumArt,
+                  width: 250,
+                  height: 250,
+                  fit: BoxFit.cover,
                 ),
-                onPressed: vm.toggleShuffle,
               ),
 
-              // Repeat mode cycle
-              IconButton(
-                icon: Icon(
-                  vm.repeatMode == PlaybackRepeatMode.off
-                      ? Icons.repeat
-                      : vm.repeatMode == PlaybackRepeatMode.one
-                      ? Icons.repeat_one
-                      : Icons.repeat,
-                  color: vm.repeatMode == PlaybackRepeatMode.off
-                      ? Colors.grey
-                      : Colors.deepPurple,
+              const SizedBox(height: 24),
+
+              Text(
+                song.title,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.bold,
                 ),
-                onPressed: vm.cycleRepeatMode,
               ),
 
-              // Stop button
-              IconButton(
-                icon: const Icon(Icons.stop_circle),
-                color: Colors.redAccent,
-                onPressed: vm.stopSong,
+              const SizedBox(height: 6),
+
+              Text(
+                song.artist,
+                style: const TextStyle(
+                  fontSize: 18,
+                  color: Colors.grey,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              Slider(
+                min: 0,
+                max: maxSeconds,
+                value: currentSeconds,
+                activeColor: Colors.deepPurple,
+                inactiveColor: Colors.grey.shade400,
+                onChangeStart: (_) {
+                  vm.startSeek();
+                },
+                onChanged: (value) {
+                  vm.updateSeekPreview(Duration(seconds: value.toInt()));
+                },
+                onChangeEnd: (value) async {
+                  await vm.finishSeek(Duration(seconds: value.toInt()));
+                },
+              ),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(_formatDuration(vm.position)),
+                  Text(_formatDuration(vm.duration)),
+                ],
+              ),
+
+              const SizedBox(height: 24),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    iconSize: 42,
+                    icon: const Icon(Icons.skip_previous),
+                    onPressed: () async {
+                      await vm.previousSong();
+                    },
+                  ),
+                  IconButton(
+                    iconSize: 72,
+                    color: Colors.deepPurple,
+                    icon: Icon(
+                      vm.isPlaying
+                          ? Icons.pause_circle
+                          : Icons.play_circle,
+                    ),
+                    onPressed: () async {
+                      if (vm.isPlaying) {
+                        await vm.pauseSong();
+                      } else {
+                        await vm.resumeSong();
+                      }
+                    },
+                  ),
+                  IconButton(
+                    iconSize: 42,
+                    icon: const Icon(Icons.skip_next),
+                    onPressed: () async {
+                      await vm.nextSong();
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 12),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  IconButton(
+                    icon: Icon(
+                      vm.shuffle ? Icons.shuffle_on : Icons.shuffle,
+                      color: vm.shuffle ? Colors.deepPurple : Colors.grey,
+                    ),
+                    onPressed: vm.toggleShuffle,
+                  ),
+                  IconButton(
+                    icon: Icon(
+                      vm.repeatMode == PlaybackRepeatMode.one
+                          ? Icons.repeat_one
+                          : Icons.repeat,
+                      color: vm.repeatMode == PlaybackRepeatMode.off
+                          ? Colors.grey
+                          : Colors.deepPurple,
+                    ),
+                    onPressed: vm.cycleRepeatMode,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.stop_circle),
+                    color: Colors.redAccent,
+                    onPressed: () async {
+                      await vm.stopSong();
+                    },
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
