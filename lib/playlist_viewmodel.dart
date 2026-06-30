@@ -86,6 +86,9 @@ class PlaylistViewModel extends ChangeNotifier {
   Duration duration = Duration.zero;
 
   PlaylistViewModel() {
+    audioPlayer.setPlayerMode(PlayerMode.mediaPlayer);
+    audioPlayer.setReleaseMode(ReleaseMode.stop);
+
     audioPlayer.onPositionChanged.listen((newPosition) {
       if (!isSeeking) {
         position = newPosition;
@@ -103,12 +106,10 @@ class PlaylistViewModel extends ChangeNotifier {
     });
   }
 
-  List<Song> get allSongs {
-    return [
-      ...prayerPlaylist,
-      ...scottPlaylist,
-    ];
-  }
+  List<Song> get allSongs => [
+        ...prayerPlaylist,
+        ...scottPlaylist,
+      ];
 
   List<Song> get currentPlaylistSongs {
     return selectedPlaylist == 'prayer' ? prayerPlaylist : scottPlaylist;
@@ -134,18 +135,19 @@ class PlaylistViewModel extends ChangeNotifier {
   }
 
   String _assetAudioPath(String path) {
-    if (path.startsWith('assets/')) {
-      return path.replaceFirst('assets/', '');
-    }
-    return path;
+    return path.startsWith('assets/')
+        ? path.replaceFirst('assets/', '')
+        : path;
   }
 
   Future<void> _playCurrentAudio() async {
     final song = currentSong;
     if (song == null) return;
 
+    final wasSeeking = isSeeking;
+    isSeeking = false;
+
     await audioPlayer.stop();
-    await audioPlayer.setReleaseMode(ReleaseMode.stop);
 
     position = Duration.zero;
     duration = Duration.zero;
@@ -154,6 +156,8 @@ class PlaylistViewModel extends ChangeNotifier {
     await audioPlayer.play(
       AssetSource(_assetAudioPath(song.audioPath)),
     );
+
+    isSeeking = wasSeeking;
   }
 
   Future<void> playSong(int index) async {
@@ -184,6 +188,7 @@ class PlaylistViewModel extends ChangeNotifier {
 
   Future<void> pauseSong() async {
     await audioPlayer.pause();
+
     isPlaying = false;
     notifyListeners();
   }
@@ -195,6 +200,7 @@ class PlaylistViewModel extends ChangeNotifier {
     }
 
     await audioPlayer.resume();
+
     isPlaying = true;
     notifyListeners();
   }
@@ -265,49 +271,54 @@ class PlaylistViewModel extends ChangeNotifier {
   }
 
   void startSeek() {
+    if (duration == Duration.zero) return;
+
     isSeeking = true;
   }
 
   void updateSeekPreview(Duration newPosition) {
-    position = newPosition;
+    if (duration == Duration.zero) return;
+
+    position = _clampDuration(newPosition);
     notifyListeners();
   }
 
   Future<void> finishSeek(Duration newPosition) async {
+    if (duration == Duration.zero) return;
+
     final safePosition = _clampDuration(newPosition);
 
     position = safePosition;
-    isSeeking = false;
+    notifyListeners();
 
     await audioPlayer.seek(safePosition);
 
+    isSeeking = false;
     notifyListeners();
+
+    if (isPlaying) {
+      await audioPlayer.resume();
+    }
   }
 
   Future<void> seekTo(Duration newPosition) async {
+    if (duration == Duration.zero) return;
+
     final safePosition = _clampDuration(newPosition);
 
     position = safePosition;
-    isSeeking = false;
+    notifyListeners();
 
     await audioPlayer.seek(safePosition);
 
-    notifyListeners();
+    if (isPlaying) {
+      await audioPlayer.resume();
+    }
   }
 
   Duration _clampDuration(Duration value) {
-    if (duration == Duration.zero) {
-      return value;
-    }
-
-    if (value < Duration.zero) {
-      return Duration.zero;
-    }
-
-    if (value > duration) {
-      return duration;
-    }
-
+    if (value < Duration.zero) return Duration.zero;
+    if (duration != Duration.zero && value > duration) return duration;
     return value;
   }
 
